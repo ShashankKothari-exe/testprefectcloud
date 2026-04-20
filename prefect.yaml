@@ -54,7 +54,32 @@ deployments:
     schedules:
       - cron: "0 7 * * *"
         timezone: UTC
-        active: true
+        active: false
+    work_pool:
+      name: kyg-workpool-local
+      work_queue_name: default
+    pull: *pull_steps
+
+  # Same pull_steps as etl-daily (git clone + pip install requirements.txt).
+  # UI-only deployments without pip_install_requirements can load flows/ but
+  # fail on import (e.g. requests) while etl-daily still works.
+  - name: hs-notes-bronze
+    description: USITC chapter/section notes — download bronze HTML to Azure/local.
+    entrypoint: flows/hs_notes_flows.py:hs_data_chapter_section_notes_2b_from_usitc
+    tags:
+      - hs-notes
+      - bronze
+    work_pool:
+      name: kyg-workpool-local
+      work_queue_name: default
+    pull: *pull_steps
+
+  - name: hs-notes-silver
+    description: USITC chapter/section notes — bronze HTML to silver JSON.
+    entrypoint: flows/hs_notes_flows.py:hs_data_chapter_section_notes_b2s_from_html_to_json
+    tags:
+      - hs-notes
+      - silver
     work_pool:
       name: kyg-workpool-local
       work_queue_name: default

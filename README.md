@@ -15,16 +15,19 @@ dependencies from [`requirements.txt`](requirements.txt).
 ├── requirements.txt        # Installed on every run by the pull step
 ├── flows/
 │   ├── hello_flow.py       # Trivial smoke-test flow
-│   └── etl_flow.py         # Example extract / transform / load flow
+│   ├── etl_flow.py         # Example extract / transform / load flow
+│   └── hs_notes_flows.py   # USITC chapter/section notes (bronze + silver)
 └── README.md
 ```
 
 ## Flows
 
-| Deployment  | Entry point                       | Schedule          |
-| ----------- | --------------------------------- | ----------------- |
-| `hello`     | `flows/hello_flow.py:hello_flow`  | none (manual)     |
-| `etl-daily` | `flows/etl_flow.py:etl_flow`      | `0 7 * * *` UTC   |
+| Deployment       | Entry point                                                                 | Schedule          |
+| ---------------- | --------------------------------------------------------------------------- | ----------------- |
+| `hello`          | `flows/hello_flow.py:hello_flow`                                            | none (manual)     |
+| `etl-daily`      | `flows/etl_flow.py:etl_flow`                                               | `0 7 * * *` UTC   |
+| `hs-notes-bronze`| `flows/hs_notes_flows.py:hs_data_chapter_section_notes_2b_from_usitc`        | none (manual)     |
+| `hs-notes-silver`| `flows/hs_notes_flows.py:hs_data_chapter_section_notes_b2s_from_html_to_json` | none (manual)  |
 
 ## Local development
 
@@ -97,7 +100,8 @@ From the repo root:
 prefect deploy --all
 ```
 
-This registers both deployments (`hello-flow/hello` and `etl-flow/etl-daily`)
+This registers all deployments in `prefect.yaml` (e.g. `hello-flow/hello`,
+`etl-flow/etl-daily`, `hs-notes-bronze`, `hs-notes-silver`)
 against the `kyg-managed-pool`. `prefect deploy` does **not** upload any code —
 the pull steps in `prefect.yaml` tell the managed worker how to fetch it at run
 time.
@@ -144,5 +148,13 @@ If you move to a private GitHub repo, add a `credentials:` line to the
   window). For private repos, see the section above.
 - **Flow imports fail at runtime but work locally**: add the missing package
   to `requirements.txt` and push — the next run will pip-install it.
+- **`ModuleNotFoundError` (e.g. `requests`) on one deployment but `etl_flow` works**:
+  Managed runs only install `requirements.txt` if the deployment includes the
+  **`pip_install_requirements` pull step** (see `pull_steps` in
+  [`prefect.yaml`](prefect.yaml)). Deployments created only in the UI often
+  clone code but **skip** that step, so third-party imports fail. Use
+  `prefect deploy --all` from this repo (or copy the same `pull: *pull_steps`
+  into the deployment), then trigger **`testprefectcloud/hs-notes-bronze`** (or
+  silver), not an ad-hoc deployment missing pip install.
 - **Changing the work pool name**: update `work_pool.name` under **each**
   deployment in `prefect.yaml`.
