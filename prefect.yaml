@@ -72,6 +72,10 @@ deployments:
     tags:
       - hs-notes
       - bronze
+    schedules:
+      - cron: "0 /30 * * *"
+        timezone: UTC
+        active: true
     work_pool:
       name: pmanaged
       work_queue_name: default
@@ -86,6 +90,10 @@ deployments:
     tags:
       - hs-notes
       - silver
+    schedules:
+      - cron: "0 /30 * * *"
+        timezone: UTC
+        active: true
     work_pool:
       name: pmanaged
       work_queue_name: default
