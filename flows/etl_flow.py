@@ -14,8 +14,8 @@ from urllib.parse import urlparse
 import httpx
 from azure.storage.blob import BlobServiceClient, ContainerClient, ContentSettings
 from prefect import flow, get_run_logger, task
+from prefect.assets import add_asset_metadata, materialize
 from prefect.blocks.system import Secret
-from pymongo import MongoClient
 
 EXTRACT_URL = "https://httpbin.org/uuid"
 AZURE_STORAGE_ACCOUNT = "jmdtestingkyg"
@@ -114,7 +114,18 @@ def _azure_container_client_from_secret() -> ContainerClient:
     return ContainerClient.from_container_url(container_url)
 
 
-@task
+def _azure_blob_asset_key(blob_stem: str) -> str:
+    """URI key for Prefect assets UI (must match ``with_options(assets=[...])`` in the flow)."""
+    return (
+        f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/"
+        f"{AZURE_CONTAINER}/{blob_stem}.json"
+    )
+
+
+@materialize(
+    _azure_blob_asset_key("etl-transformed"),
+    asset_deps=[EXTRACT_URL],
+)
 def upload_transformed_json_to_azure(record: dict[str, Any], blob_stem: str) -> str:
     """Write ``record`` as JSON to container ``ptest``; blob name ``{blob_stem}.json``."""
     logger = get_run_logger()
@@ -128,6 +139,15 @@ def upload_transformed_json_to_azure(record: dict[str, Any], blob_stem: str) -> 
         content_settings=ContentSettings(content_type="application/json"),
     )
     logger.info("Uploaded JSON to container %s blob %s", AZURE_CONTAINER, blob_name)
+    add_asset_metadata(
+        _azure_blob_asset_key(blob_stem),
+        {
+            "blob_name": blob_name,
+            "container": AZURE_CONTAINER,
+            "bytes": len(body),
+            "record_keys": list(record),
+        },
+    )
     return blob_name
 
 
@@ -136,7 +156,11 @@ def etl_flow(url: str = EXTRACT_URL) -> dict[str, Any]:
     raw = extract(url)
     record = transform(raw)
     collection_name = load(record)
-    upload_transformed_json_to_azure(record, collection_name)
+    blob_asset = _azure_blob_asset_key(collection_name)
+    upload_transformed_json_to_azure.with_options(
+        assets=[blob_asset],
+        asset_deps=[url],
+    )(record, collection_name)
     return record
 
 
