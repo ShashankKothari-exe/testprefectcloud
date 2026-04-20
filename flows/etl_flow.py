@@ -70,15 +70,15 @@ def load(record: dict[str, Any]) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     collection_name = f"UUID_{ts}"
 
-    with MongoClient(creds["uri"], serverSelectionTimeoutMS=10_000) as client:
-        coll = client[creds["db"]][collection_name]
-        coll.insert_one(dict(record))
-    logger.info(
-        "Inserted transformed row into %s.%s (document keys: %s)",
-        creds["db"],
-        collection_name,
-        list(record),
-    )
+    # with MongoClient(creds["uri"], serverSelectionTimeoutMS=10_000) as client:
+    #     coll = client[creds["db"]][collection_name]
+    #     coll.insert_one(dict(record))
+    # logger.info(
+    #     "Inserted transformed row into %s.%s (document keys: %s)",
+    #     creds["db"],
+    #     collection_name,
+    #     list(record),
+    # )
     return collection_name
 
 
