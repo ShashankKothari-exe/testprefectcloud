@@ -73,7 +73,7 @@ deployments:
       - hs-notes
       - bronze
     schedules:
-      - cron: "0 /30 * * *"
+      - cron: "*/30 * * * *"
         timezone: UTC
         active: true
     work_pool:
@@ -91,7 +91,7 @@ deployments:
       - hs-notes
       - silver
     schedules:
-      - cron: "0 /30 * * *"
+      - cron: "*/30 * * * *"
         timezone: UTC
         active: true
     work_pool:
