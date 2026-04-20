@@ -41,7 +41,7 @@ deployments:
       - sample
       - smoke-test
     work_pool:
-      name: kyg-workpool-local
+      name: pmanaged
       work_queue_name: default
     pull: *pull_steps
 
@@ -56,7 +56,7 @@ deployments:
         timezone: UTC
         active: false
     work_pool:
-      name: kyg-workpool-local
+      name: pmanaged
       work_queue_name: default
     pull: *pull_steps
 
@@ -70,7 +70,7 @@ deployments:
       - hs-notes
       - bronze
     work_pool:
-      name: kyg-workpool-local
+      name: pmanaged
       work_queue_name: default
     pull: *pull_steps
 
@@ -81,6 +81,6 @@ deployments:
       - hs-notes
       - silver
     work_pool:
-      name: kyg-workpool-local
+      name: pmanaged
       work_queue_name: default
     pull: *pull_steps
