@@ -9,10 +9,10 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
-from azure.core.exceptions import ResourceExistsError
-from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.blob import BlobServiceClient, ContainerClient, ContentSettings
 from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 from pymongo import MongoClient
@@ -82,14 +82,17 @@ def load(record: dict[str, Any]) -> str:
     return collection_name
 
 
-def _azure_blob_service_url_from_secret() -> str:
-    """Build blob service ``account_url`` for ``BlobServiceClient`` from Secret ``azure-ptest``.
+def _azure_container_client_from_secret() -> ContainerClient:
+    """Build a ``ContainerClient`` for ``AZURE_CONTAINER`` from Secret ``azure-ptest``.
 
-    Accepts either:
+    The block may hold:
 
-    - Full service URL including SAS, e.g. ``https://acct.blob.core.windows.net?sv=...``
-    - SAS token only: the secret may be ``?sv=...`` or ``sv=...``; it is appended to
-      ``https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net``.
+    - **SAS query only** (``?sv=...`` or ``sv=...``): assumed to be scoped to container
+      ``ptest``; we use ``ContainerClient.from_container_url`` with
+      ``https://{account}.blob.core.windows.net/ptest?...`` so the signature matches
+      container-level SAS from the Azure portal.
+    - **Full HTTPS URL**: if the path is ``/ptest``, we use that URL as-is; otherwise we
+      treat it as an account-level SAS URL and use ``BlobServiceClient`` + container client.
     """
     raw = Secret.load("azure-ptest").get()
     if not isinstance(raw, str):
@@ -97,26 +100,26 @@ def _azure_blob_service_url_from_secret() -> str:
     s = raw.strip()
     if not s:
         raise ValueError("Secret azure-ptest is empty.")
+
     if s.startswith("https://"):
-        return s
-    base = f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net"
-    if s.startswith("?"):
-        return f"{base}{s}"
-    return f"{base}?{s}"
+        path_first = (urlparse(s).path.strip("/").split("/") or [""])[0]
+        if path_first == AZURE_CONTAINER:
+            return ContainerClient.from_container_url(s)
+        return BlobServiceClient(account_url=s).get_container_client(AZURE_CONTAINER)
+
+    qs = s[1:] if s.startswith("?") else s
+    container_url = (
+        f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/{AZURE_CONTAINER}?{qs}"
+    )
+    return ContainerClient.from_container_url(container_url)
 
 
 @task
 def upload_transformed_json_to_azure(record: dict[str, Any], blob_stem: str) -> str:
     """Write ``record`` as JSON to container ``ptest``; blob name ``{blob_stem}.json``."""
     logger = get_run_logger()
-    account_url = _azure_blob_service_url_from_secret()
-    service = BlobServiceClient(account_url=account_url)
+    container = _azure_container_client_from_secret()
     blob_name = f"{blob_stem}.json"
-    container = service.get_container_client(AZURE_CONTAINER)
-    try:
-        container.create_container()
-    except ResourceExistsError:
-        pass
     blob = container.get_blob_client(blob_name)
     body = json.dumps(record, indent=2).encode("utf-8")
     blob.upload_blob(
