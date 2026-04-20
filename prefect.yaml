@@ -1,0 +1,61 @@
+# Prefect project file — see https://docs.prefect.io/v3/deploy/infrastructure-concepts/prefect-yaml
+#
+# Code is NOT baked into an image. Instead, every flow run on the managed work
+# pool clones this GitHub repo (public) and pip-installs its requirements at
+# runtime.
+
+name: testprefectcloud
+prefect-version: 3.6.27
+
+# No build steps — we do not produce a Docker image.
+build: null
+
+# Push step is also unused because deployment metadata lives in Prefect Cloud
+# and the source of truth for code is GitHub itself.
+push: null
+
+# ---------------------------------------------------------------------------
+# Shared pull section (YAML anchor) reused by each deployment below.
+# Order matters:
+#   1. git_clone  -> clones the public GitHub repo into the run's working dir
+#                    and sets cwd to the cloned directory.
+#   2. pip_install_requirements -> installs deps from requirements.txt
+#                                   in that cloned directory.
+# ---------------------------------------------------------------------------
+pull_steps: &pull_steps
+  - prefect.deployments.steps.git_clone:
+      id: clone-step
+      repository: https://github.com/ShashankKothari-exe/testprefectcloud.git
+      branch: main
+  - prefect.deployments.steps.pip_install_requirements:
+      directory: "{{ clone-step.directory }}"
+      requirements_file: requirements.txt
+
+deployments:
+  - name: hello
+    description: Smoke-test deployment for the hello flow.
+    entrypoint: flows/hello_flow.py:hello_flow
+    parameters:
+      name: world
+    tags:
+      - sample
+      - smoke-test
+    work_pool:
+      name: pmanaged
+      work_queue_name: default
+    pull: *pull_steps
+
+  - name: etl-daily
+    description: Runs the example ETL flow on a daily schedule.
+    entrypoint: flows/etl_flow.py:etl_flow
+    tags:
+      - sample
+      - etl
+    schedules:
+      - cron: "0 7 * * *"
+        timezone: UTC
+        active: true
+    work_pool:
+      name: pmanaged
+      work_queue_name: default
+    pull: *pull_steps
