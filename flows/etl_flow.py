@@ -7,7 +7,6 @@ Run locally:
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -19,6 +18,7 @@ from prefect.blocks.system import Secret
 from pymongo import MongoClient
 
 EXTRACT_URL = "https://httpbin.org/uuid"
+AZURE_STORAGE_ACCOUNT = "jmdtestingkyg"
 AZURE_CONTAINER = "ptest"
 
 
@@ -88,8 +88,8 @@ def _azure_blob_service_url_from_secret() -> str:
     Accepts either:
 
     - Full service URL including SAS, e.g. ``https://acct.blob.core.windows.net?sv=...``
-    - SAS token only: set ``AZURE_STORAGE_ACCOUNT`` to the storage account name; the secret
-      may be ``?sv=...`` or ``sv=...`` and is appended to that account's blob endpoint.
+    - SAS token only: the secret may be ``?sv=...`` or ``sv=...``; it is appended to
+      ``https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net``.
     """
     raw = Secret.load("azure-ptest").get()
     if not isinstance(raw, str):
@@ -99,13 +99,7 @@ def _azure_blob_service_url_from_secret() -> str:
         raise ValueError("Secret azure-ptest is empty.")
     if s.startswith("https://"):
         return s
-    account = os.environ.get("AZURE_STORAGE_ACCOUNT", "").strip()
-    if not account:
-        raise ValueError(
-            "When azure-ptest is not a full https:// URL, set AZURE_STORAGE_ACCOUNT to the "
-            "storage account name (the secret is then treated as the SAS query string)."
-        )
-    base = f"https://{account}.blob.core.windows.net"
+    base = f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net"
     if s.startswith("?"):
         return f"{base}{s}"
     return f"{base}?{s}"
