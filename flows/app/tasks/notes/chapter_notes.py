@@ -7,7 +7,13 @@ from io import BytesIO
 from bs4 import BeautifulSoup, NavigableString
 from prefect import task
 from prefect.artifacts import create_markdown_artifact
+from prefect.assets import add_asset_metadata, materialize
 
+from app.lib.hs_notes_asset_keys import (
+    MATERIALIZE_PLACEHOLDER_BRONZE_CHAPTER,
+    USITC_REST_BASE,
+    bronze_chapter_html_uri,
+)
 from app.lib.notes_utils import (
     BS_PARSER,
     extract_referenced_data_from_chapter_and_section_notes,
@@ -20,7 +26,10 @@ from app.lib.storage_utils import load_data_to_storage, read_file_content_from_s
 from app.type.data_source import DataSource
 
 
-@task
+@materialize(
+    MATERIALIZE_PLACEHOLDER_BRONZE_CHAPTER,
+    asset_deps=[USITC_REST_BASE],
+)
 def fetch_and_store_raw_chapter_notes_bronze(
     chapter_num, bronze_datasource: DataSource
 ):
@@ -38,6 +47,19 @@ def fetch_and_store_raw_chapter_notes_bronze(
     html_bytes = BytesIO(html.encode("utf-8"))
     load_data_to_storage(
         html_bytes, file_path, bronze_datasource.type, bronze_datasource.creds
+    )
+
+    asset_key = bronze_chapter_html_uri(bronze_datasource, int(chapter_num))
+    body = html.encode("utf-8")
+    add_asset_metadata(
+        asset_key,
+        {
+            "layer": "bronze",
+            "kind": "chapter_html",
+            "chapter": int(chapter_num),
+            "bytes": len(body),
+            "file_path": file_path,
+        },
     )
 
     # Create markdown artifact

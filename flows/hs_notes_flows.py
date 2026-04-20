@@ -11,9 +11,19 @@ import os
 
 from prefect import flow
 from prefect.artifacts import create_markdown_artifact
+from prefect.assets import Asset, AssetProperties, materialize
 from prefect.task_runners import ThreadPoolTaskRunner
 
 from app import config
+from app.lib.hs_notes_asset_keys import (
+    USITC_REST_BASE,
+    bronze_chapter_html_uri,
+    bronze_html_prefix_uri,
+    bronze_section_html_uri,
+    silver_json_prefix_uri,
+    usitc_chapter_notes_dependency,
+    usitc_section_notes_dependency,
+)
 from app.lib.notes_utils import get_chapter_numbers_grouped_by_section
 from app.lib.storage_utils import (
     get_bronze_datasource_for_env,
@@ -28,6 +38,62 @@ from app.tasks.notes.section_notes import (
     transform_and_load_sections_from_bronze_to_silver,
 )
 from app.type.data_source import DataSource
+
+# Flow-level assets: summarize each pipeline in the Prefect UI asset graph.
+BRONZE_PIPELINE_ASSET = Asset(
+    key="prefect://hs-notes/pipeline/bronze-usitc-download",
+    properties=AssetProperties(
+        name="HS Notes — Bronze (USITC HTML)",
+        description=(
+            "End-to-end bronze load: 99 chapter HTML files + 21 section HTML files "
+            "from USITC REST APIs into bronze storage."
+        ),
+    ),
+)
+
+SILVER_PIPELINE_ASSET = Asset(
+    key="prefect://hs-notes/pipeline/silver-json-from-html",
+    properties=AssetProperties(
+        name="HS Notes — Silver (JSON)",
+        description=(
+            "Bronze→silver transforms: parsed JSON, HTS reference maps, and section notes."
+        ),
+    ),
+)
+
+
+@materialize(BRONZE_PIPELINE_ASSET, asset_deps=[USITC_REST_BASE])
+def record_bronze_pipeline_completion(
+    successful_chapters: int,
+    failed_chapters: int,
+    successful_sections: int,
+    failed_sections: int,
+) -> None:
+    BRONZE_PIPELINE_ASSET.add_metadata(
+        {
+            "successful_chapters": successful_chapters,
+            "failed_chapters": failed_chapters,
+            "successful_sections": successful_sections,
+            "failed_sections": failed_sections,
+        }
+    )
+
+
+@materialize(SILVER_PIPELINE_ASSET, asset_deps=[])
+def record_silver_pipeline_completion(
+    successful_chapter_transforms: int,
+    failed_chapter_transforms: int,
+    successful_section_transforms: int,
+    failed_section_transforms: int,
+) -> None:
+    SILVER_PIPELINE_ASSET.add_metadata(
+        {
+            "successful_chapter_transforms": successful_chapter_transforms,
+            "failed_chapter_transforms": failed_chapter_transforms,
+            "successful_section_transforms": successful_section_transforms,
+            "failed_section_transforms": failed_section_transforms,
+        }
+    )
 
 
 @flow(
@@ -60,16 +126,20 @@ def hs_data_chapter_section_notes_2b_from_usitc(
     all_sections = get_chapter_numbers_grouped_by_section()
 
     print("Starting bronze download for 99 chapters and 21 sections...")
-    chapter_futures = fetch_and_store_raw_chapter_notes_bronze.map(
-        list(range(1, 100)),
-        [bronze_datasource] * 99,
-    )
+    chapter_futures = [
+        fetch_and_store_raw_chapter_notes_bronze.with_options(
+            assets=[bronze_chapter_html_uri(bronze_datasource, n)],
+            asset_deps=[usitc_chapter_notes_dependency(n)],
+        ).submit(n, bronze_datasource)
+        for n in range(1, 100)
+    ]
 
     section_futures = []
     for section_index, chapter_nums in enumerate(all_sections, start=1):
-        future = fetch_and_store_raw_section_notes_bronze.submit(
-            section_index, chapter_nums, bronze_datasource
-        )
+        future = fetch_and_store_raw_section_notes_bronze.with_options(
+            assets=[bronze_section_html_uri(bronze_datasource, section_index)],
+            asset_deps=[usitc_section_notes_dependency(chapter_nums[0])],
+        ).submit(section_index, chapter_nums, bronze_datasource)
         section_futures.append(future)
 
     chapter_results = [future.result() for future in chapter_futures]
@@ -79,6 +149,13 @@ def hs_data_chapter_section_notes_2b_from_usitc(
     failed_chapters = len(chapter_results) - successful_chapters
     successful_sections = sum(1 for result in section_results if result)
     failed_sections = len(section_results) - successful_sections
+
+    record_bronze_pipeline_completion(
+        successful_chapters,
+        failed_chapters,
+        successful_sections,
+        failed_sections,
+    )
 
     create_markdown_artifact(
         markdown=f"""
@@ -147,6 +224,19 @@ def hs_data_chapter_section_notes_b2s_from_html_to_json(
     )
     failed_section_transforms = (
         len(section_transform_results) - successful_section_transforms
+    )
+
+    record_silver_pipeline_completion.with_options(
+        asset_deps=[
+            bronze_html_prefix_uri(bronze_datasource),
+            silver_json_prefix_uri(silver_datasource),
+            BRONZE_PIPELINE_ASSET,
+        ],
+    )(
+        successful_chapter_transforms,
+        failed_chapter_transforms,
+        successful_section_transforms,
+        failed_section_transforms,
     )
 
     create_markdown_artifact(

@@ -6,7 +6,13 @@ from io import BytesIO
 from bs4 import BeautifulSoup
 from prefect import task
 from prefect.artifacts import create_markdown_artifact
+from prefect.assets import add_asset_metadata, materialize
 
+from app.lib.hs_notes_asset_keys import (
+    MATERIALIZE_PLACEHOLDER_BRONZE_SECTION,
+    USITC_REST_BASE,
+    bronze_section_html_uri,
+)
 from app.lib.notes_utils import (
     BS_PARSER,
     extract_referenced_data_from_chapter_and_section_notes,
@@ -19,7 +25,10 @@ from app.lib.storage_utils import load_data_to_storage
 from app.type.data_source import DataSource
 
 
-@task
+@materialize(
+    MATERIALIZE_PLACEHOLDER_BRONZE_SECTION,
+    asset_deps=[USITC_REST_BASE],
+)
 def fetch_and_store_raw_section_notes_bronze(
     section_index, chapter_nums, bronze_datasource: DataSource
 ):
@@ -37,6 +46,19 @@ def fetch_and_store_raw_section_notes_bronze(
     html_bytes = BytesIO(html.encode("utf-8"))
     load_data_to_storage(
         html_bytes, file_path, bronze_datasource.type, bronze_datasource.creds
+    )
+
+    asset_key = bronze_section_html_uri(bronze_datasource, int(section_index))
+    body = html.encode("utf-8")
+    add_asset_metadata(
+        asset_key,
+        {
+            "layer": "bronze",
+            "kind": "section_html",
+            "section_index": int(section_index),
+            "bytes": len(body),
+            "file_path": file_path,
+        },
     )
 
     # Create markdown artifact
