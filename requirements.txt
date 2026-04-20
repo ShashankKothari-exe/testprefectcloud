@@ -7,6 +7,6 @@ azure-identity==1.20.0
 azure-storage-blob==12.24.1
 beautifulsoup4==4.13.3
 fsspec==2025.2.0
-prefect==3.2.7
+prefect==3.6.27
 python-dotenv==1.0.1
 requests==2.32.3
