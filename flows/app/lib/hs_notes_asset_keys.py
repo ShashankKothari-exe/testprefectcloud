@@ -12,11 +12,13 @@ USITC_REST_BASE = "https://hts.usitc.gov/reststop/"
 
 
 def usitc_chapter_notes_dependency(chapter_num: int) -> str:
-    return f"https://hts.usitc.gov/reststop/getChapterNotes?doc={chapter_num}"
+    """Lineage key for the USITC chapter-notes endpoint (no ``?`` — Prefect Asset keys forbid it)."""
+    return f"prefect://external/hts.usitc.gov/reststop/getChapterNotes/doc/{int(chapter_num)}"
 
 
 def usitc_section_notes_dependency(first_chapter_num: int) -> str:
-    return f"https://hts.usitc.gov/reststop/getSectionNotes?doc={first_chapter_num}"
+    """Lineage key for the USITC section-notes endpoint (no query string)."""
+    return f"prefect://external/hts.usitc.gov/reststop/getSectionNotes/doc/{int(first_chapter_num)}"
 
 
 def _azure_blob_uri(blob_path: str) -> str:
