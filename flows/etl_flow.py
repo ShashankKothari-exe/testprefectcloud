@@ -6,10 +6,14 @@ Run locally:
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 from prefect import flow, get_run_logger, task
+from prefect.blocks.system import Secret
+from pymongo import MongoClient
 
 EXTRACT_URL = "https://httpbin.org/uuid"
 
@@ -36,12 +40,42 @@ def transform(payload: dict[str, Any]) -> dict[str, Any]:
     return transformed
 
 
+def _credentials_from_ptest_block() -> dict[str, str]:
+    """Read Mongo connection settings from the Prefect Secret block named ``ptest``.
+
+    The secret value must be JSON: ``{"uri": "<mongo connection string>", "ptest": "<database name>"}``.
+    """
+    raw = Secret.load("ptest").get()
+    if isinstance(raw, dict):
+        data = raw
+    elif isinstance(raw, str):
+        data = json.loads(raw)
+    else:
+        raise TypeError("Block ptest must resolve to a JSON object (dict or JSON string).")
+    uri = data.get("uri")
+    db_name = data.get("ptest")
+    if not uri or not db_name:
+        raise ValueError('Secret ptest JSON must include non-empty "uri" and "ptest" keys.')
+    return {"uri": str(uri), "db": str(db_name)}
+
+
 @task
-def load(record: dict[str, Any]) -> None:
+def load(record: dict[str, Any]) -> str:
     logger = get_run_logger()
-    # For a real pipeline this would write to a warehouse/DB/object store;
-    # logging here keeps the example free of external dependencies.
-    logger.info("Loaded record: %s", record)
+    creds = _credentials_from_ptest_block()
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    collection_name = f"UUID_{ts}"
+
+    with MongoClient(creds["uri"], serverSelectionTimeoutMS=10_000) as client:
+        coll = client[creds["db"]][collection_name]
+        coll.insert_one(dict(record))
+    logger.info(
+        "Inserted transformed row into %s.%s (document keys: %s)",
+        creds["db"],
+        collection_name,
+        list(record),
+    )
+    return collection_name
 
 
 @flow(name="etl-flow")
