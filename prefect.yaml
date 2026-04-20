@@ -43,6 +43,9 @@ deployments:
     work_pool:
       name: pmanaged
       work_queue_name: default
+      job_variables:
+        env:
+          EXECUTION_ENVIRONMENT: dev
     pull: *pull_steps
 
   - name: etl-daily
@@ -58,11 +61,11 @@ deployments:
     work_pool:
       name: pmanaged
       work_queue_name: default
+      job_variables:
+        env:
+          EXECUTION_ENVIRONMENT: dev
     pull: *pull_steps
 
-  # Same pull_steps as etl-daily (git clone + pip install requirements.txt).
-  # UI-only deployments without pip_install_requirements can load flows/ but
-  # fail on import (e.g. requests) while etl-daily still works.
   - name: hs-notes-bronze
     description: USITC chapter/section notes — download bronze HTML to Azure/local.
     entrypoint: flows/hs_notes_flows.py:hs_data_chapter_section_notes_2b_from_usitc
@@ -72,6 +75,9 @@ deployments:
     work_pool:
       name: pmanaged
       work_queue_name: default
+      job_variables:
+        env:
+          EXECUTION_ENVIRONMENT: dev
     pull: *pull_steps
 
   - name: hs-notes-silver
@@ -83,4 +89,7 @@ deployments:
     work_pool:
       name: pmanaged
       work_queue_name: default
+      job_variables:
+        env:
+          EXECUTION_ENVIRONMENT: dev
     pull: *pull_steps
