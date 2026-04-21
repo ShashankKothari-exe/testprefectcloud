@@ -101,3 +101,20 @@ deployments:
         env:
           EXECUTION_ENVIRONMENT: dev
     pull: *pull_steps
+
+  - name: assets-etl-demo
+    description: >
+      Medallion ETL (bronze/silver/gold) to Azure ptest with Prefect Cloud assets —
+      materializations, explicit deps, and pipeline-level Asset metadata.
+    entrypoint: flows/assets_etl_flow.py:assets_etl_flow
+    tags:
+      - assets
+      - etl
+      - medallion
+    work_pool:
+      name: pmanaged
+      work_queue_name: default
+      job_variables:
+        env:
+          EXECUTION_ENVIRONMENT: dev
+    pull: *pull_steps
